@@ -697,6 +697,15 @@
           </div>
         </div>
 
+        <div class="save-card">
+          <div class="save-card-title">🏦 Importer un relevé bancaire</div>
+          <div class="save-card-desc">Importez directement vos opérations converties depuis le PDF de votre banque. L'application lira automatiquement les dates, débits et crédits.</div>
+          <div class="save-actions">
+            <button class="btn btn-orange" id="importReleveBtn" style="background: #2563eb; color: white;">💳 Charger le relevé (JSON)</button>
+          </div>
+          <input type="file" id="importReleveInput" accept=".json" style="display:none" />
+        </div>
+
         <!-- Import JSON -->
         <div class="save-card">
           <div class="save-card-title">📥 Importer des données</div>
@@ -1899,6 +1908,81 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => setTimeout(drawBtcQR, 50));
   }
 });
+
+  // --- DEBUT : IMPORT DU RELEVE BANCAIRE ---
+document.getElementById('importReleveBtn').onclick = () => document.getElementById('importReleveInput').click();
+
+document.getElementById('importReleveInput').onchange = function(e) {
+    const file = this.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    
+    reader.onload = function(event) {
+        try {
+            const data = JSON.parse(event.target.result);
+            let addedCount = 0;
+
+            // On parcourt chaque ligne du relevé
+            data.forEach(row => {
+                if (!row["Date"] || !row["Opération"]) return; // On ignore les mauvaises lignes
+
+                // 1. Conversion de la date (JJ/MM/AAAA -> AAAA-MM-JJ)
+                const dateParts = row["Date"].split("/");
+                if (dateParts.length !== 3) return;
+                const isoDate = `${dateParts[2]}-${dateParts[1]}-${dateParts[0]}`;
+                const monthKey = `${dateParts[2]}-${dateParts[1]}`;
+
+                // 2. Traitement des montants
+                let amount = 0;
+                let type = 'dep'; 
+
+                if (row["Débit EUROS"] && row["Débit EUROS"].trim() !== "") {
+                    amount = parseFloat(row["Débit EUROS"].replace(',', '.').replace(/\s/g, ''));
+                    type = 'dep'; // C'est une dépense
+                } else if (row["Crédit EUROS"] && row["Crédit EUROS"].trim() !== "") {
+                    amount = parseFloat(row["Crédit EUROS"].replace(',', '.').replace(/\s/g, ''));
+                    type = 'rev'; // C'est un revenu
+                }
+
+                if (isNaN(amount) || amount === 0) return;
+
+                // 3. Ajout à l'application
+                // Utilisation de la structure attendue par MonBudget
+                state.transactions.push({
+                    id: uid(), 
+                    type: type,
+                    label: row["Opération"].substring(0, 50),
+                    amount: amount,
+                    cat: 'Autres', // Catégorie par défaut
+                    date: isoDate,
+                    month: monthKey,
+                    recurrent: false,
+                    note: 'Import automatique PDF',
+                    payment: 'CB'
+                });
+                
+                addedCount++;
+            });
+
+            if (addedCount > 0) {
+                // On enregistre et on met à jour l'affichage
+                saveState();
+                if (typeof renderAll === "function") renderAll();
+                showToast(`✅ ${addedCount} opérations importées avec succès !`);
+            } else {
+                showToast(`⚠️ Aucune opération valide trouvée.`);
+            }
+
+        } catch (error) {
+            console.error(error);
+            showToast('❌ Erreur : Le fichier n\'est pas un JSON valide.');
+        }
+    };
+    
+    reader.readAsText(file);
+    this.value = ''; // Réinitialiser pour pouvoir recharger
+};
+// --- FIN : IMPORT DU RELEVE BANCAIRE ---
 </script>
 </body>
 </html>
